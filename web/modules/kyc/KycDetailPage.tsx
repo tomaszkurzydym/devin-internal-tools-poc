@@ -21,7 +21,10 @@ export function KycDetailPage() {
       detail.setData(updated);
       audit.reload();
     },
-    onConflict: detail.reload,
+    onConflict: () => {
+      detail.reload();
+      audit.reload();
+    },
   });
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState<string>();

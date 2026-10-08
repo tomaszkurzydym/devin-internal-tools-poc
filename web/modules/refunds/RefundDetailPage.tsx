@@ -22,7 +22,10 @@ export function RefundDetailPage() {
       detail.setData(updated);
       audit.reload();
     },
-    onConflict: detail.reload,
+    onConflict: () => {
+      detail.reload();
+      audit.reload();
+    },
   });
 
   if (detail.error) return <ErrorState error={detail.error} onRetry={detail.reload} />;

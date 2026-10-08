@@ -1,5 +1,23 @@
 # Verification report
 
+## Refunds slice + shared foundations (branch `devin/1791484239-refunds-shared-foundations`)
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 4 files, 58 tests pass (49 existing KYC/permission tests + 9 new in `tests/refunds.test.ts`) |
+| `npm run lint` / `npm run typecheck` / `npm run build` | pass |
+| Upgrade path | `npm start` on the existing `data/app.db` added RF-2001…RF-2018; existing KYC rows, notes and audit events were unchanged (compared by hash) |
+| Browser: Refunds as reviewer | search (`Whitlock`, `RF-2001`), status filter, combined filters, Clear; Mark reviewed → Reviewed with actor/time and one `refunds.marked_reviewed` event |
+| Browser: stale/repeat action | stale tab shows 409 conflict; repeat request 409; exactly one audit event. Defect found: audit panel did not refresh after the conflict. Fixed (reload audit on 409) and re-checked |
+| Browser: shared Audit Log | refund event filterable by ID and action; KYC actions still listed |
+| Browser: KYC regression | start review → note → approve; reject with empty reason (validation) then with reason; events on detail and Audit Log |
+| Browser: viewer | KYC and Refunds read-only; direct `mark-reviewed` POST → 403; `/admin` → 403 |
+| Browser: admin | matrix shows `refunds.read`/`refunds.review`; admin can mark reviewed |
+| Restart persistence | refund reviews, KYC decisions, notes and audit events retained after restart (no reset) |
+| Skill walkthrough | every file path and exported symbol referenced in `.agents/skills/add-internal-tool/SKILL.md` was checked against the tree; commands checked against `package.json`. One wording fix (`useSession().can`). This was a walkthrough by the authoring session, **not** validation in a fresh Devin session |
+
+Not checked: a fresh Devin session building application #3 from the skill; frontend unit tests (none exist).
+
 Environment: Ubuntu 22.04, Node 24.19.0, npm 10.8.3. Branch `devin/1791467045-kyc-internal-tools-poc`.
 
 ## Automated checks (all run, all passing at the final commit)

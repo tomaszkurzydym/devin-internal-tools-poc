@@ -6,7 +6,7 @@ import { seedIfEmpty } from "./scripts/seedData.js";
 
 const port = Number(process.env.PORT ?? 3000);
 const db = openAppDatabase(DEFAULT_DB_PATH);
-if (seedIfEmpty(db)) console.log("Database was empty: seeded synthetic demo data.");
+if (seedIfEmpty(db)) console.log("Seeded missing synthetic demo data (empty database or empty module tables).");
 
 const app = createApp(db, {
   staticDir: path.resolve("dist/web"),
