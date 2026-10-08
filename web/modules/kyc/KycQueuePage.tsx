@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { PageHeader } from "../../components/AppShell";
 import { DataTable } from "../../components/DataTable";
 import { FilterBar } from "../../components/FilterBar";
@@ -7,32 +7,22 @@ import { ErrorState, Loading } from "../../components/States";
 import { StatusBadge } from "../../components/StatusBadge";
 import { qs } from "../../core/api";
 import { useApi } from "../../core/useApi";
+import { useUrlFilters } from "../../core/useUrlFilters";
 import { KYC_STATUSES, RISK_LEVELS, type KycApplication } from "./types";
 
 export function KycQueuePage() {
-  const [params, setParams] = useSearchParams();
-  const filters = { q: params.get("q") ?? "", status: params.get("status") ?? "", risk: params.get("risk") ?? "" };
+  const { filters, set, clear } = useUrlFilters(["q", "status", "risk"] as const);
   const { data, error, loading, reload } = useApi<{ applications: KycApplication[] }>(
     `/api/kyc/applications${qs(filters)}`,
   );
-
-  const onChange = (name: string, value: string) =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (value) next.set(name, value);
-        else next.delete(name);
-        return next;
-      },
-      { replace: true },
-    );
 
   return (
     <>
       <PageHeader title="KYC Reviews" subtitle="Synthetic applications awaiting identity verification review." />
       <FilterBar
         values={filters}
-        onChange={onChange}
+        onChange={set}
+        onClear={clear}
         searchName="q"
         searchPlaceholder="Search by applicant name or application ID"
         selects={[

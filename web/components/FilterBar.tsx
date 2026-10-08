@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { humanize } from "./StatusBadge";
 
 export interface SelectFilter {
@@ -6,16 +7,57 @@ export interface SelectFilter {
   options: readonly string[];
 }
 
-/** Controlled filter bar: a search box plus any number of select filters, backed by a flat value map. */
+const SEARCH_DEBOUNCE_MS = 250;
+
+/**
+ * Search box with local state; commits to `onCommit` after a short pause so fast typing is never
+ * overwritten by a lagging external (e.g. URL) value. External changes (like Clear) resync it.
+ */
+function SearchInput({ value, onCommit, placeholder }: { value: string; onCommit: (v: string) => void; placeholder?: string }) {
+  const [text, setText] = useState(value);
+  const committed = useRef(value);
+  const commitRef = useRef(onCommit);
+  commitRef.current = onCommit;
+
+  useEffect(() => {
+    if (value !== committed.current) {
+      committed.current = value;
+      setText(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    if (text === committed.current) return;
+    const t = setTimeout(() => {
+      committed.current = text;
+      commitRef.current(text);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [text]);
+
+  return (
+    <input
+      type="search"
+      aria-label={placeholder ?? "Search"}
+      placeholder={placeholder}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+    />
+  );
+}
+
+/** Filter bar: a debounced search box plus any number of select filters, backed by a flat value map. */
 export function FilterBar({
   values,
   onChange,
+  onClear,
   searchName,
   searchPlaceholder,
   selects = [],
 }: {
   values: Record<string, string>;
   onChange: (name: string, value: string) => void;
+  onClear: () => void;
   searchName?: string;
   searchPlaceholder?: string;
   selects?: SelectFilter[];
@@ -24,12 +66,10 @@ export function FilterBar({
   return (
     <div className="filter-bar" role="search">
       {searchName && (
-        <input
-          type="search"
-          aria-label={searchPlaceholder ?? "Search"}
-          placeholder={searchPlaceholder}
+        <SearchInput
           value={values[searchName] ?? ""}
-          onChange={(e) => onChange(searchName, e.target.value)}
+          onCommit={(v) => onChange(searchName, v.trim())}
+          placeholder={searchPlaceholder}
         />
       )}
       {selects.map((s) => (
@@ -46,10 +86,7 @@ export function FilterBar({
         </label>
       ))}
       {active && (
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={() => Object.keys(values).forEach((k) => onChange(k, ""))}
-        >
+        <button className="btn btn-secondary btn-sm" onClick={onClear}>
           Clear filters
         </button>
       )}

@@ -17,7 +17,7 @@ describe("KYC workflow transitions", () => {
   });
 
   it("supports pending → in_review → approved, with expected audit events", async () => {
-    const { db, app } = setup();
+    const { app } = setup();
     const reviewer = await loginAs(app, "u_reviewer");
     const started = await reviewer.post(`/api/kyc/applications/${PENDING}/start-review`).send({}).expect(200);
     expect(started.body.application.status).toBe("in_review");

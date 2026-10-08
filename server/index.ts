@@ -7,7 +7,10 @@ const port = Number(process.env.PORT ?? 3000);
 const db = openDatabase(DEFAULT_DB_PATH);
 if (seedIfEmpty(db)) console.log("Database was empty: seeded synthetic demo data.");
 
-const app = createApp(db, { staticDir: path.resolve("dist/web") });
+const app = createApp(db, {
+  staticDir: path.resolve("dist/web"),
+  secureCookies: process.env.SECURE_COOKIES === "true",
+});
 app.listen(port, () => {
   console.log(`Internal tools POC listening on http://localhost:${port} (db: ${DEFAULT_DB_PATH})`);
 });

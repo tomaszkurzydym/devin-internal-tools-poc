@@ -38,8 +38,8 @@ export function createApp(db: DB, opts: AppOptions = {}) {
   app.post("/api/session", (req, res) => {
     const userId: unknown = req.body?.userId;
     if (typeof userId !== "string") throw new HttpError(400, "validation_error", "userId is required");
+    const sid = createSession(db, userId); // throws for unknown users, leaving any current session intact
     if (req.sessionId) deleteSession(db, req.sessionId);
-    const sid = createSession(db, userId);
     res.cookie(SESSION_COOKIE, sid, {
       httpOnly: true,
       sameSite: "strict",

@@ -29,7 +29,7 @@ npm start            # serve API + UI on http://localhost:3000
 | Type check | `npm run typecheck` |
 | Build | `npm run build` |
 
-Environment: `PORT` (default `3000`), `DB_PATH` (default `data/app.db`).
+Environment: `PORT` (default `3000`), `DB_PATH` (default `data/app.db`), `SECURE_COOKIES=true` (set the `Secure` cookie flag; use behind HTTPS).
 
 ## Demo walkthrough
 
@@ -134,7 +134,7 @@ Still Refunds-specific (`server/modules/refunds/`):
 - Demo identity selector instead of real authentication. There is no MFA and no user provisioning, and users and roles are seeded.
 - SQLite, a single process and a local file DB. No migrations framework (the schema is created idempotently on start).
 - Audit storage is append-only only at the application and trigger level. It is not WORM or tamper-evident.
-- No rate limiting, no CSRF token (relies on SameSite=Strict plus JSON-only), no HTTPS (set `secureCookies` behind TLS), and no security headers or CSP.
+- No rate limiting, no CSRF token (relies on SameSite=Strict plus JSON-only), no HTTPS (set `SECURE_COOKIES=true` behind TLS), and no security headers or CSP.
 - Admin is read-only, and there is no user or role management.
 - No pagination (audit queries default to 200 rows, max 500), and search is a simple `LIKE`.
 - No reopen or override flows, no assignment or claiming of reviews, and no SLA timers.

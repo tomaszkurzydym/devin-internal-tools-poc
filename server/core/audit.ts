@@ -58,7 +58,7 @@ export function listAuditEvents(db: DB, q: AuditQuery = {}): AuditEvent[] {
     where.push("e.action = ?");
     params.push(q.action);
   }
-  const limit = Math.min(Math.max(q.limit ?? 200, 1), 500);
+  const limit = Math.min(Math.max(Math.trunc(q.limit ?? 200), 1), 500);
   const rows = db
     .prepare(
       `SELECT e.id, e.actor_id, u.name AS actor_name, e.action, e.entity_type, e.entity_id, e.occurred_at, e.metadata
@@ -86,6 +86,11 @@ export function listAuditActions(db: DB): string[] {
   );
 }
 
+function parseLimit(v: unknown): number | undefined {
+  if (typeof v !== "string" || !/^\d{1,4}$/.test(v)) return undefined;
+  return Number(v);
+}
+
 /** Read-only audit API. No write/edit/delete routes exist. */
 export function auditRouter(db: DB): Router {
   const router = Router();
@@ -96,7 +101,7 @@ export function auditRouter(db: DB): Router {
         entityType: str(req.query.entityType),
         entityId: str(req.query.entityId),
         action: str(req.query.action),
-        limit: Number(req.query.limit) || undefined,
+        limit: parseLimit(req.query.limit),
       }),
       actions: listAuditActions(db),
     });

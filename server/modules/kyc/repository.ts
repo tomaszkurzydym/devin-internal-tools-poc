@@ -36,8 +36,9 @@ export function listApplications(db: DB, f: ApplicationFilters = {}): KycApplica
   const where: string[] = [];
   const params: unknown[] = [];
   if (f.q) {
-    where.push("(a.applicant_name LIKE ? OR a.id LIKE ?)");
-    params.push(`%${f.q}%`, `%${f.q}%`);
+    const like = `%${f.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    where.push("(a.applicant_name LIKE ? ESCAPE '\\' OR a.id LIKE ? ESCAPE '\\')");
+    params.push(like, like);
   }
   if (f.status) {
     where.push("a.status = ?");
