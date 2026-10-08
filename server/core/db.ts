@@ -12,7 +12,8 @@ export interface ModuleSchema {
   tables: readonly string[];
 }
 
-export function openDatabase(file: string = DEFAULT_DB_PATH, modules: readonly ModuleSchema[] = []): DB {
+/** Core primitive: `modules` is required so a caller cannot silently get a DB without domain tables. Apps use `openAppDatabase` (server/database.ts). */
+export function openDatabase(file: string, modules: readonly ModuleSchema[]): DB {
   if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
   db.pragma("journal_mode = WAL");
@@ -22,7 +23,7 @@ export function openDatabase(file: string = DEFAULT_DB_PATH, modules: readonly M
 }
 
 /** Idempotent schema creation: shared tables (users, sessions, audit), then each module's tables. */
-export function migrate(db: DB, modules: readonly ModuleSchema[] = []): void {
+export function migrate(db: DB, modules: readonly ModuleSchema[]): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -62,7 +63,7 @@ export function migrate(db: DB, modules: readonly ModuleSchema[] = []): void {
 }
 
 /** Drops every table (used only by the local demo reset command and tests). */
-export function dropAll(db: DB, modules: readonly ModuleSchema[] = []): void {
+export function dropAll(db: DB, modules: readonly ModuleSchema[]): void {
   for (const m of modules) for (const t of m.tables) db.exec(`DROP TABLE IF EXISTS ${t}`);
   db.exec(`
     DROP TABLE IF EXISTS audit_events;
