@@ -4,6 +4,8 @@ import { Loading } from "./components/States";
 import { SessionProvider, useSession } from "./core/session";
 import { KycDetailPage } from "./modules/kyc/KycDetailPage";
 import { KycQueuePage } from "./modules/kyc/KycQueuePage";
+import { RefundDetailPage } from "./modules/refunds/RefundDetailPage";
+import { RefundsQueuePage } from "./modules/refunds/RefundsQueuePage";
 import { AdminPage } from "./pages/AdminPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { ComingSoonPage } from "./pages/ComingSoonPage";
@@ -22,7 +24,8 @@ function AuthedApp() {
         <Route path="/audit" element={<AuditLogPage />} />
         {/* Rendered for everyone on purpose: the server decides (403 for non-admins). */}
         <Route path="/admin" element={<AdminPage />} />
-        <Route path="/refunds" element={<ComingSoonPage name="Refunds" />} />
+        <Route path="/refunds" element={<RefundsQueuePage />} />
+        <Route path="/refunds/:id" element={<RefundDetailPage />} />
         <Route path="/feature-flags" element={<ComingSoonPage name="Feature Flags" />} />
         <Route path="*" element={<div className="state state-empty">Page not found.</div>} />
       </Routes>

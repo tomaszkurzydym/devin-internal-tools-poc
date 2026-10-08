@@ -6,14 +6,13 @@ import { qs } from "../core/api";
 import { useApi } from "../core/useApi";
 import { useUrlFilters } from "../core/useUrlFilters";
 
-const KNOWN_ACTIONS = ["kyc.review_started", "kyc.note_added", "kyc.approved", "kyc.rejected"];
-
 export function AuditLogPage() {
   const { filters, set, clear } = useUrlFilters(["entityId", "action"] as const);
   const { data, error, loading, reload } = useApi<{ events: AuditEvent[]; actions: string[] }>(
     `/api/audit-events${qs(filters)}`,
   );
-  const actions = Array.from(new Set([...KNOWN_ACTIONS, ...(data?.actions ?? [])]));
+  // Server returns every registered module's actions plus any recorded ones.
+  const actions = data?.actions ?? [];
 
   return (
     <>
@@ -26,7 +25,7 @@ export function AuditLogPage() {
         onChange={set}
         onClear={clear}
         searchName="entityId"
-        searchPlaceholder="Filter by application ID (e.g. KYC-1001)"
+        searchPlaceholder="Filter by record ID (e.g. KYC-1001, RF-2001)"
         selects={[{ name: "action", label: "Action", options: actions }]}
       />
       {error ? <ErrorState error={error} onRetry={reload} /> : !data && loading ? <Loading /> : <AuditEventsTable events={data?.events ?? []} />}

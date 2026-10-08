@@ -92,9 +92,9 @@ function parseLimit(v: unknown): number | undefined {
 }
 
 /** Read-only audit API. No write/edit/delete routes exist. */
-export function auditRouter(db: DB): Router {
+export function auditRouter(db: DB, knownActions: readonly string[] = []): Router {
   const router = Router();
-  router.get("/", requirePermission("audit:read"), (req, res) => {
+  router.get("/", requirePermission("audit.read"), (req, res) => {
     const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
     res.json({
       events: listAuditEvents(db, {
@@ -103,7 +103,7 @@ export function auditRouter(db: DB): Router {
         action: str(req.query.action),
         limit: parseLimit(req.query.limit),
       }),
-      actions: listAuditActions(db),
+      actions: Array.from(new Set([...knownActions, ...listAuditActions(db)])).sort(),
     });
   });
   return router;

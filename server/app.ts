@@ -16,7 +16,7 @@ import {
   requireAuth,
   requirePermission,
 } from "./core/session.js";
-import { kycRouter } from "./modules/kyc/routes.js";
+import { MODULES } from "./modules/index.js";
 
 export interface AppOptions {
   staticDir?: string;
@@ -61,14 +61,14 @@ export function createApp(db: DB, opts: AppOptions = {}) {
   });
 
   // --- Shared platform endpoints ---
-  app.use("/api/audit-events", auditRouter(db));
+  app.use("/api/audit-events", auditRouter(db, MODULES.flatMap((m) => m.auditActions)));
 
-  app.get("/api/admin/overview", requirePermission("admin:access"), (_req, res) => {
+  app.get("/api/admin/overview", requirePermission("admin.access"), (_req, res) => {
     res.json({ users: listUsers(db), roles: ROLES, matrix: permissionMatrix() });
   });
 
   // --- Domain modules ---
-  app.use("/api/kyc", kycRouter(db));
+  for (const m of MODULES) app.use(m.apiPath, m.router(db));
 
   app.use("/api", (_req, _res, next) => next(new HttpError(404, "not_found", "Unknown API route")));
 

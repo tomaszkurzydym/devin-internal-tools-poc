@@ -79,10 +79,10 @@ tests/                  # vitest + supertest at the HTTP boundary
 
 | Permission | viewer | reviewer | admin |
 | --- | :-: | :-: | :-: |
-| `kyc:read` (applications, notes) | ✔ | ✔ | ✔ |
-| `audit:read` | ✔ | ✔ | ✔ |
-| `kyc:review` (start, note, approve, reject) | | ✔ | ✔ |
-| `admin:access` | | | ✔ |
+| `kyc.read` (applications, notes) | ✔ | ✔ | ✔ |
+| `audit.read` | ✔ | ✔ | ✔ |
+| `kyc.review` (start, note, approve, reject) | | ✔ | ✔ |
+| `admin.access` | | | ✔ |
 
 - Every protected route declares `requirePermission(...)`. A missing or expired session gets **401**, and a missing permission gets **403**. The UI hides controls using `/api/session` permissions, but that is cosmetic only. `/admin` is routed for everyone on purpose, so the server makes the decision.
 - Mutations must be `application/json` (otherwise 415). Together with `SameSite=Strict` this blocks simple cross-site form posts.
@@ -108,7 +108,7 @@ pending ──start review──▶ in_review ──approve──▶ approved (f
 - Fields: `id` (`evt_<uuid>`), `actor_id` (from the session), `action`, `entity_type`, `entity_id`, `occurred_at` (server UTC ISO-8601) and `metadata` JSON (`previousStatus`/`newStatus`, `noteId`, `reason`).
 - Actions: `kyc.review_started`, `kyc.note_added`, `kyc.approved`, `kyc.rejected`. Seeded history is marked `metadata.seeded = true`.
 - Append-only through the application: there are no write, edit or delete endpoints or UI, and SQLite triggers abort `UPDATE`/`DELETE` on `audit_events`. This is **not** tamper-proof storage: anyone with file access to the DB can change it.
-- `GET /api/audit-events?entityId=&action=&entityType=` returns events newest first (`audit:read`).
+- `GET /api/audit-events?entityId=&action=&entityType=` returns events newest first (`audit.read`).
 
 ## Reusing the foundation: a Refunds module
 

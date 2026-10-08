@@ -1,10 +1,11 @@
 import request from "supertest";
 import { createApp } from "../server/app";
-import { openDatabase, type DB } from "../server/core/db";
+import type { DB } from "../server/core/db";
+import { openAppDatabase } from "../server/database";
 import { seed } from "../server/scripts/seedData";
 
 export function setup() {
-  const db = openDatabase(":memory:");
+  const db = openAppDatabase(":memory:");
   seed(db);
   const app = createApp(db);
   return { db, app };

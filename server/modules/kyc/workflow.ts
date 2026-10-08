@@ -3,6 +3,7 @@ import type { DB } from "../../core/db.js";
 import { nowUtc } from "../../core/db.js";
 import { conflict, notFound, validationError } from "../../core/http.js";
 import { writeAuditEvent } from "../../core/audit.js";
+import { guardedTransition } from "../../core/transition.js";
 import { getApplication } from "./repository.js";
 import { KYC_AUDIT_ACTIONS, KYC_ENTITY, type KycApplication, type KycStatus } from "./types.js";
 
@@ -54,9 +55,8 @@ function loadOr404(db: DB, id: string): KycApplication {
 }
 
 /**
- * Conditional status update: only succeeds if the row is still in the expected state.
- * A stale or repeated request changes 0 rows and is rejected, so it cannot overwrite a
- * final decision or produce a duplicate audit event.
+ * Conditional status update via the shared guardedTransition: a stale or repeated request
+ * changes 0 rows and is rejected (409) with no audit event, so it cannot overwrite a decision.
  */
 function transition(
   db: DB,
@@ -67,43 +67,35 @@ function transition(
   extra: { rejectionReason?: string } = {},
 ): KycApplication {
   const { from, to } = TRANSITIONS[name];
-  const run = db.transaction(() => {
-    const current = loadOr404(db, id);
-    const now = nowUtc();
-    const isDecision = to === "approved" || to === "rejected";
-    const result = db
-      .prepare(
-        `UPDATE kyc_applications
-         SET status = ?, updated_at = ?,
-             decided_by = CASE WHEN ? THEN ? ELSE decided_by END,
-             decided_at = CASE WHEN ? THEN ? ELSE decided_at END,
-             rejection_reason = COALESCE(?, rejection_reason)
-         WHERE id = ? AND status = ?`,
-      )
-      .run(to, now, isDecision ? 1 : 0, actorId, isDecision ? 1 : 0, now, extra.rejectionReason ?? null, id, from);
-    if (result.changes !== 1) {
-      throw conflict(
-        `Cannot ${TRANSITION_LABELS[name]} application with status "${current.status}" (requires "${from}")`,
-      );
-    }
-    writeAuditEvent(
-      db,
-      {
-        actorId,
-        action: auditAction,
-        entityType: KYC_ENTITY,
-        entityId: id,
-        metadata: {
-          previousStatus: from,
-          newStatus: to,
-          ...(extra.rejectionReason ? { reason: extra.rejectionReason } : {}),
-        },
+  const isDecision = to === "approved" || to === "rejected";
+  loadOr404(db, id);
+  return guardedTransition(db, {
+    update: (now) =>
+      db
+        .prepare(
+          `UPDATE kyc_applications
+           SET status = ?, updated_at = ?,
+               decided_by = CASE WHEN ? THEN ? ELSE decided_by END,
+               decided_at = CASE WHEN ? THEN ? ELSE decided_at END,
+               rejection_reason = COALESCE(?, rejection_reason)
+           WHERE id = ? AND status = ?`,
+        )
+        .run(to, now, isDecision ? 1 : 0, actorId, isDecision ? 1 : 0, now, extra.rejectionReason ?? null, id, from),
+    conflictMessage: () =>
+      `Cannot ${TRANSITION_LABELS[name]} application with status "${loadOr404(db, id).status}" (requires "${from}")`,
+    audit: {
+      actorId,
+      action: auditAction,
+      entityType: KYC_ENTITY,
+      entityId: id,
+      metadata: {
+        previousStatus: from,
+        newStatus: to,
+        ...(extra.rejectionReason ? { reason: extra.rejectionReason } : {}),
       },
-      now,
-    );
-    return loadOr404(db, id);
+    },
+    result: () => loadOr404(db, id),
   });
-  return run.immediate();
 }
 
 export function startReview(db: DB, actorId: string, id: string): KycApplication {
