@@ -70,7 +70,7 @@ describe("server-side permissions", () => {
     const admin = await loginAs(app, "u_admin");
     const a = await admin.get("/api/admin/overview").expect(200);
     expect(a.body.users).toHaveLength(3);
-    const review = a.body.matrix.find((m: { permission: string }) => m.permission === "kyc:review");
+    const review = a.body.matrix.find((m: { permission: string }) => m.permission === "kyc.review");
     expect(review.roles).toEqual({ viewer: false, reviewer: true, admin: true });
   });
 

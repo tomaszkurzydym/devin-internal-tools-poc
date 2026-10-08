@@ -5,20 +5,27 @@ import { AuditEventsTable, type AuditEvent } from "../../components/AuditEventsT
 import { Button, Form, TextAreaField, formatDateTime } from "../../components/Form";
 import { ErrorState, Loading, Notice } from "../../components/States";
 import { StatusBadge, humanize } from "../../components/StatusBadge";
-import { ApiError, api } from "../../core/api";
+import { api } from "../../core/api";
 import { useSession } from "../../core/session";
+import { useAction } from "../../core/useAction";
 import { useApi } from "../../core/useApi";
 import type { KycDetail } from "./types";
-
-type Feedback = { kind: "success" | "error"; message: string } | null;
 
 export function KycDetailPage() {
   const { id = "" } = useParams();
   const { can } = useSession();
   const detail = useApi<KycDetail>(`/api/kyc/applications/${encodeURIComponent(id)}`);
   const audit = useApi<{ events: AuditEvent[] }>(`/api/audit-events?entityType=kyc_application&entityId=${encodeURIComponent(id)}`);
-  const [feedback, setFeedback] = useState<Feedback>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const { busy, feedback, setFeedback, run } = useAction<KycDetail>({
+    onSuccess: (updated) => {
+      detail.setData(updated);
+      audit.reload();
+    },
+    onConflict: () => {
+      detail.reload();
+      audit.reload();
+    },
+  });
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState<string>();
   const [reason, setReason] = useState("");
@@ -28,29 +35,8 @@ export function KycDetailPage() {
   if (detail.error) return <ErrorState error={detail.error} onRetry={detail.reload} />;
   if (!detail.data) return <Loading />;
   const { application: app, notes, availableActions } = detail.data;
-  const canReview = can("kyc:review");
+  const canReview = can("kyc.review");
   const allowed = (a: string) => canReview && availableActions.includes(a as never);
-
-  async function run(key: string, fn: () => Promise<KycDetail>, success: string, onFieldError?: (msg: string) => void) {
-    setBusy(key);
-    setFeedback(null);
-    try {
-      const updated = await fn();
-      detail.setData(updated);
-      audit.reload();
-      setFeedback({ kind: "success", message: success });
-      return true;
-    } catch (e) {
-      const err = e instanceof ApiError ? e : new ApiError(0, "network", String(e));
-      const fieldMsg = err.details && Object.values(err.details)[0];
-      if (fieldMsg && onFieldError) onFieldError(fieldMsg);
-      setFeedback({ kind: "error", message: fieldMsg ?? err.message });
-      if (err.status === 409) detail.reload();
-      return false;
-    } finally {
-      setBusy(null);
-    }
-  }
 
   const post = (path: string, body?: unknown) => () => api.post<KycDetail>(`/api/kyc/applications/${app.id}/${path}`, body);
 

@@ -1,19 +1,15 @@
 import { Router } from "express";
 import type { DB } from "../../core/db.js";
-import { notFound } from "../../core/http.js";
+import { notFound, oneOf } from "../../core/http.js";
 import { actor, requirePermission } from "../../core/session.js";
 import { getApplication, listApplications, listNotes } from "./repository.js";
 import { KYC_STATUSES, RISK_LEVELS, type KycStatus, type RiskLevel } from "./types.js";
 import { addNote, approve, availableActions, reject, startReview } from "./workflow.js";
 
-function oneOf<T extends string>(values: readonly T[], v: unknown): T | undefined {
-  return typeof v === "string" && (values as readonly string[]).includes(v) ? (v as T) : undefined;
-}
-
 export function kycRouter(db: DB): Router {
   const router = Router();
-  const read = requirePermission("kyc:read");
-  const review = requirePermission("kyc:review");
+  const read = requirePermission("kyc.read");
+  const review = requirePermission("kyc.review");
 
   const detail = (id: string) => {
     const application = getApplication(db, id);

@@ -5,6 +5,7 @@ const TONES: Record<string, Tone> = {
   in_review: "info",
   approved: "success",
   rejected: "danger",
+  reviewed: "success",
   low: "success",
   medium: "warning",
   high: "danger",

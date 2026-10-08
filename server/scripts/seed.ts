@@ -2,14 +2,14 @@
  * Local demo seed/reset. `npm run seed` seeds an empty database (no-op otherwise);
  * `npm run db:reset` drops all tables (including sessions and audit events) and reseeds.
  */
-import { DEFAULT_DB_PATH, dropAll, migrate, openDatabase } from "../core/db.js";
+import { DEFAULT_DB_PATH } from "../core/db.js";
+import { openAppDatabase, resetAppDatabase } from "../database.js";
 import { seed, seedIfEmpty } from "./seedData.js";
 
 const reset = process.argv.includes("--reset");
-const db = openDatabase(DEFAULT_DB_PATH);
+const db = openAppDatabase(DEFAULT_DB_PATH);
 if (reset) {
-  dropAll(db);
-  migrate(db);
+  resetAppDatabase(db);
   seed(db);
   console.log(`Reset and reseeded ${DEFAULT_DB_PATH}`);
 } else if (seedIfEmpty(db)) {

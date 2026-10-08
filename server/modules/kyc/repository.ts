@@ -1,4 +1,5 @@
 import type { DB } from "../../core/db.js";
+import { likeContains } from "../../core/sql.js";
 import type { KycApplication, KycNote, KycStatus, RiskLevel } from "./types.js";
 
 type Row = Record<string, string | null>;
@@ -36,7 +37,7 @@ export function listApplications(db: DB, f: ApplicationFilters = {}): KycApplica
   const where: string[] = [];
   const params: unknown[] = [];
   if (f.q) {
-    const like = `%${f.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const like = likeContains(f.q);
     where.push("(a.applicant_name LIKE ? ESCAPE '\\' OR a.id LIKE ? ESCAPE '\\')");
     params.push(like, like);
   }

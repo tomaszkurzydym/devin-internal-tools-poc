@@ -36,3 +36,13 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: { code: "internal_error", message: "Internal server error" } });
 };
+
+/** Narrows an untrusted query value to one of `values`, else undefined. */
+export function oneOf<T extends string>(values: readonly T[], v: unknown): T | undefined {
+  return typeof v === "string" && (values as readonly string[]).includes(v) ? (v as T) : undefined;
+}
+
+/** Trimmed non-empty query string, else undefined. */
+export function queryString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}

@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { ApiError, api } from "./api";
 
 export type Role = "viewer" | "reviewer" | "admin";
-export type Permission = "kyc:read" | "kyc:review" | "audit:read" | "admin:access";
+export type { Permission } from "../../shared/permissions";
+import type { Permission } from "../../shared/permissions";
 export interface SessionUser {
   id: string;
   name: string;

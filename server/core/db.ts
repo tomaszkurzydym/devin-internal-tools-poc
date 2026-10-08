@@ -6,17 +6,24 @@ export type DB = Database.Database;
 
 export const DEFAULT_DB_PATH = process.env.DB_PATH ?? path.resolve("data/app.db");
 
-export function openDatabase(file: string = DEFAULT_DB_PATH): DB {
+/** Per-module persistence: DDL (idempotent) and its tables in drop order. */
+export interface ModuleSchema {
+  schema: string;
+  tables: readonly string[];
+}
+
+/** Core primitive: `modules` is required so a caller cannot silently get a DB without domain tables. Apps use `openAppDatabase` (server/database.ts). */
+export function openDatabase(file: string, modules: readonly ModuleSchema[]): DB {
   if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  migrate(db);
+  migrate(db, modules);
   return db;
 }
 
-/** Idempotent schema creation. Shared tables (users, sessions, audit) + module tables. */
-export function migrate(db: DB): void {
+/** Idempotent schema creation: shared tables (users, sessions, audit), then each module's tables. */
+export function migrate(db: DB, modules: readonly ModuleSchema[]): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -51,38 +58,14 @@ export function migrate(db: DB): void {
     CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
       BEFORE DELETE ON audit_events
       BEGIN SELECT RAISE(ABORT, 'audit_events is append-only'); END;
-
-    CREATE TABLE IF NOT EXISTS kyc_applications (
-      id TEXT PRIMARY KEY,
-      applicant_name TEXT NOT NULL,
-      country TEXT NOT NULL,
-      submitted_at TEXT NOT NULL,
-      risk_level TEXT NOT NULL CHECK (risk_level IN ('low', 'medium', 'high')),
-      status TEXT NOT NULL CHECK (status IN ('pending', 'in_review', 'approved', 'rejected')),
-      verification_summary TEXT NOT NULL,
-      risk_flags TEXT NOT NULL DEFAULT '[]',
-      rejection_reason TEXT,
-      decided_by TEXT REFERENCES users(id),
-      decided_at TEXT,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS kyc_notes (
-      id TEXT PRIMARY KEY,
-      application_id TEXT NOT NULL REFERENCES kyc_applications(id),
-      author_id TEXT NOT NULL REFERENCES users(id),
-      body TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_kyc_notes_app ON kyc_notes(application_id);
   `);
+  for (const m of modules) db.exec(m.schema);
 }
 
 /** Drops every table (used only by the local demo reset command and tests). */
-export function dropAll(db: DB): void {
+export function dropAll(db: DB, modules: readonly ModuleSchema[]): void {
+  for (const m of modules) for (const t of m.tables) db.exec(`DROP TABLE IF EXISTS ${t}`);
   db.exec(`
-    DROP TABLE IF EXISTS kyc_notes;
-    DROP TABLE IF EXISTS kyc_applications;
     DROP TABLE IF EXISTS audit_events;
     DROP TABLE IF EXISTS sessions;
     DROP TABLE IF EXISTS users;
