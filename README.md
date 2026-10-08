@@ -1,6 +1,6 @@
-# Internal Tools POC — KYC Review Queue
+# Internal Tools POC — KYC Reviews and Refunds
 
-Engineering-owned internal-tools prototype for a fintech. **KYC Reviews** is the representative application; the shell, session, permission policy, audit trail and UI components are shared so future apps (Refunds, Feature Flags) can reuse them.
+Engineering-owned internal-tools prototype for a fintech. Two applications, **KYC Reviews** and a minimal **Refunds** review slice, are built on the same shared shell, session, permission policy, guarded-transition/audit infrastructure and UI components. New applications follow the repository skill [`add-internal-tool`](.agents/skills/add-internal-tool/SKILL.md); project rules for agents are in [`AGENTS.md`](AGENTS.md).
 
 > **Synthetic data only.** Every applicant, ID and check result is fictional. No real customer systems are contacted.
 >
@@ -41,51 +41,62 @@ Environment: `PORT` (default `3000`), `DB_PATH` (default `data/app.db`), `SECURE
 6. Open another pending application, start a review, then **Reject…**. Submitting without a reason shows a validation error; enter a reason and confirm.
 7. **Switch user** → **Vera Viewer**. Everything can be read, but there are no action controls ("Read-only" notice) and **Admin** is not in the navigation. Visiting `/admin` directly shows a 403 from the server.
 8. **Switch user** → **Ada Admin** → **Admin** shows the seeded users and the permission matrix.
-9. Refunds and Feature Flags appear in the navigation as **Coming soon**.
+9. As **Riley Reviewer**, open **Refunds**: search `Whitlock` or `RF-2001`, filter by Status, open a pending request and click **Mark reviewed**. The request's audit event (`refunds.marked_reviewed`) appears on the detail page and in the shared **Audit Log** (filter by `RF-2001` or the action). As **Vera Viewer** the Refunds pages are read-only.
+10. Feature Flags appears in the navigation as **Coming soon**.
 
 ## Architecture
 
 A single TypeScript package: an Express 5 API, a React 19 SPA (Vite) and SQLite via `better-sqlite3`. The server serves the built SPA, so there is one process and one port.
 
 ```
+shared/permissions.ts     # central policy: <resource>.<action> permissions, role mapping, matrix (server + web)
 server/
-  core/                 # shared platform: no KYC knowledge
-    db.ts               # connection, schema, append-only triggers on audit_events
-    session.ts          # demo sessions, loadSession, requireAuth, requirePermission, actor()
-    permissions.ts      # central role -> permission policy + matrix
-    audit.ts            # writeAuditEvent (call inside a transaction), list + read-only router
-    http.ts             # HttpError, JSON-only mutations, error handler
-  modules/kyc/          # KYC domain
-    types.ts            # statuses, risk levels, audit action names
-    repository.ts       # queries
-    workflow.ts         # transition rules, validation, transactional mutations
-    routes.ts           # HTTP layer: permission checks + calls into workflow
-  scripts/              # seed data + seed/reset CLI
-  app.ts / index.ts     # composition root
+  core/                   # shared platform: no domain knowledge
+    db.ts                 # connection, core schema (users, sessions, audit_events), append-only triggers
+    session.ts            # demo sessions, loadSession, requireAuth, requirePermission, actor()
+    audit.ts              # writeAuditEvent (inside a transaction), list + read-only router
+    transition.ts         # guardedTransition: conditional UPDATE + audit event in one IMMEDIATE tx, 409 otherwise
+    module.ts             # ServerModule contract (schema, tables, router, seed, audit actions)
+    http.ts / sql.ts      # HttpError helpers, JSON-only mutations, oneOf/queryString, likeContains
+  modules/
+    index.ts              # MODULES registry: the one place a new application is registered
+    kyc/                  # KYC domain: types, schema, seed, repository, workflow, routes, index
+    refunds/              # Refunds domain: same file layout, one transition
+  database.ts             # opens the DB with all module schemas; reset helper
+  scripts/                # demo users + seed/reset CLI (delegates domain data to modules)
+  app.ts / index.ts       # composition root: mounts shared routers and every registered module
 web/
-  core/                 # api client, session context, nav registry, useApi
-  components/           # AppShell, DataTable, FilterBar, StatusBadge, Form/TextAreaField/Button,
-                        # Loading/Empty/Error/Notice states, AuditEventsTable
-  modules/kyc/          # queue + detail pages
-  pages/                # Audit Log, Admin, Coming soon, demo sign-in
-tests/                  # vitest + supertest at the HTTP boundary
+  core/                   # api client, session context, nav registry, useApi, useUrlFilters, useAction
+  components/             # AppShell, DataTable, FilterBar, StatusBadge, Form/TextAreaField/Button,
+                          # Loading/Empty/Error/Notice states, AuditEventsTable
+  modules/kyc/            # queue + detail pages
+  modules/refunds/        # queue + detail pages
+  pages/                  # Audit Log, Admin, Coming soon, demo sign-in
+tests/                    # vitest + supertest at the HTTP boundary
+.agents/skills/add-internal-tool/SKILL.md   # procedure for adding application #3+
 ```
 
 ### Identity and permissions
 
 - `POST /api/session {userId}` (demo only) creates a random 256-bit session id stored in the `sessions` table and set as an `httpOnly`, `SameSite=Strict` cookie (8h TTL).
 - `loadSession` resolves the acting user on every `/api` request by joining `sessions` to `users`. The role and actor **always** come from these server-owned records. Any `role`, `actorId` or `userId` in a mutation body is ignored, and nothing is read from browser storage.
-- `server/core/permissions.ts` is the single policy:
+- `shared/permissions.ts` is the single policy (`<resource>.<action>`), used by the server for enforcement and by the web app for UI hints:
 
 | Permission | viewer | reviewer | admin |
 | --- | :-: | :-: | :-: |
 | `kyc.read` (applications, notes) | ✔ | ✔ | ✔ |
 | `audit.read` | ✔ | ✔ | ✔ |
+| `refunds.read` | ✔ | ✔ | ✔ |
 | `kyc.review` (start, note, approve, reject) | | ✔ | ✔ |
+| `refunds.review` (mark reviewed) | | ✔ | ✔ |
 | `admin.access` | | | ✔ |
 
 - Every protected route declares `requirePermission(...)`. A missing or expired session gets **401**, and a missing permission gets **403**. The UI hides controls using `/api/session` permissions, but that is cosmetic only. `/admin` is routed for everyone on purpose, so the server makes the decision.
 - Mutations must be `application/json` (otherwise 415). Together with `SameSite=Strict` this blocks simple cross-site form posts.
+
+### Refunds workflow
+
+`pending → reviewed` via `POST /api/refunds/requests/:id/mark-reviewed` (`refunds.review`). It uses `guardedTransition`, so a repeated or stale request returns **409** and writes no audit event; success writes `refunds.marked_reviewed` (entity `refund_request`) in the same transaction. `reviewed` is final. There is no refund approval, payment execution or provider integration. 18 synthetic requests (`RF-2001`…`RF-2018`) are seeded; `npm start` adds them to an existing database whose Refunds table is empty, without touching KYC data.
 
 ### KYC workflow
 
@@ -110,24 +121,26 @@ pending ──start review──▶ in_review ──approve──▶ approved (f
 - Append-only through the application: there are no write, edit or delete endpoints or UI, and SQLite triggers abort `UPDATE`/`DELETE` on `audit_events`. This is **not** tamper-proof storage: anyone with file access to the DB can change it.
 - `GET /api/audit-events?entityId=&action=&entityType=` returns events newest first (`audit.read`).
 
-## Reusing the foundation: a Refunds module
+## Shared primitives: evidence of reuse
 
-Already available to Refunds without changes:
+| Shared primitive | Location | KYC uses it for | Refunds uses it for | A third application adds |
+| --- | --- | --- | --- | --- |
+| Session / current user | `server/core/session.ts` (`actor`, `requireAuth`), `web/core/session.tsx` (`useSession`) | actor ID on every mutation and note author | `reviewed_by` and audit actor | nothing |
+| Server-side authorization | `shared/permissions.ts`, `requirePermission` in `server/core/session.ts` | `kyc.read`, `kyc.review` on every route | `refunds.read`, `refunds.review` on every route | its `<resource>.<action>` entries in `shared/permissions.ts`; `requirePermission` on each route |
+| Guarded transition + transactional audit | `server/core/transition.ts`, `server/core/audit.ts` | start review / approve / reject (notes use `writeAuditEvent` directly in a transaction) | mark reviewed | its conditional `UPDATE` SQL, transition table and audit action names |
+| Module registration | `server/core/module.ts`, `server/modules/index.ts`, `server/database.ts`, `server/scripts/seedData.ts` | schema, seed, router mount, audit actions | same | a `ServerModule` in `server/modules/<name>/index.ts` and one `MODULES` entry |
+| Audit display | `/api/audit-events`, `web/pages/AuditLogPage.tsx`, `web/components/AuditEventsTable.tsx` | Audit Log + per-application events | Audit Log + per-request events | nothing (its actions appear in the filter automatically) |
+| Shell and navigation | `web/components/AppShell.tsx`, `web/core/nav.ts`, `web/App.tsx` | nav entry + 2 routes | nav entry + 2 routes | one nav entry and its routes |
+| Table, filters, URL state, fetching | `DataTable`, `FilterBar`, `useUrlFilters`, `useApi`, `qs`; search via `likeContains` | queue with search + status + risk | queue with search + status | columns and filter options |
+| Mutation feedback and states | `web/core/useAction.ts`, `States.tsx`, `Form.tsx`, `StatusBadge.tsx` | detail actions, validation errors, 409 reload | Mark reviewed with feedback, 409 reload | status colours in `TONES` if new statuses |
 
-- **Shell and navigation**: change the `Refunds` entry in `web/core/nav.ts` from `comingSoon` to a `permission`, and add routes in `web/App.tsx`.
-- **Session and current user**: `actor(req)` on the server, `useSession()` on the client.
-- **Permissions**: add `refunds:read` and `refunds:issue` (and maybe `refunds:approve_high_value`) to `PERMISSIONS` and `ROLE_PERMISSIONS`. The Admin matrix picks them up automatically. Guard routes with `requirePermission("refunds:issue")`.
-- **Audit**: call `writeAuditEvent(db, { action: "refund.issued", entityType: "refund", ... })` inside the refund transaction. The Audit Log page, its filters and `AuditEventsTable` work unchanged.
-- **UI components**: `DataTable`, `FilterBar`, `StatusBadge`, `TextAreaField`/`Button`/`Form`, and the Loading/Empty/Error/Notice states.
-- **Infra patterns**: `HttpError`/`validationError`/`conflict`, JSON-only mutations, transaction plus conditional update.
+**Refunds code that is necessarily domain-specific** (`server/modules/refunds/`, `web/modules/refunds/`): the `refund_requests` schema and synthetic seed, row mapping and filters, the `pending → reviewed` transition table and its SQL, the audit action name and metadata, amount formatting, and the page layouts/columns. Refunds deliberately has **no** payment execution, provider integration or approval step; a real refunds tool would add amount rules, maker-checker approval and an outbox for provider calls, none of which the shared core attempts to model.
 
-Still Refunds-specific (`server/modules/refunds/`):
+**Shared infrastructure that needed no change for Refunds**: session handling, `requirePermission`, `writeAuditEvent`, the audit API and append-only triggers, `AppShell`, `DataTable`, `FilterBar`, `useUrlFilters`, `useApi`, States/Form components and `AuditEventsTable`.
 
-- Data model: refund amount and currency (integer minor units), original transaction reference, payment method, idempotency key.
-- Rules: refund ≤ the remaining refundable amount, partial refunds, currency checks, a time window since the original payment, and reason codes.
-- Approval policy: amount thresholds, four-eyes or maker-checker (the requester cannot approve their own refund), and per-role limits.
-- Integration with a payments provider: idempotent external calls, an outbox or retry pattern, reconciliation, and failure states such as `failed` or `reversed`. The DB transaction cannot cover the external call.
-- Domain audit metadata: amounts, provider reference, approval chain.
+**Shared code that did change** (to remove KYC coupling, once): permission names moved to `shared/permissions.ts` with `resource.action` naming (the frontend no longer duplicates the list); KYC tables and seed moved out of `server/core/db.ts` and the seed script into `server/modules/kyc/`; the KYC conditional-update + audit logic was extracted into `guardedTransition`; the KYC detail page's mutation/feedback logic was extracted into `useAction`; the Audit Log's hard-coded KYC action list was replaced by module-declared actions. KYC behaviour is unchanged and its existing tests pass (one test line changed for the permission rename).
+
+**Diff size for this change** (`git diff --numstat` against the previous `main`, added/removed lines): shared infrastructure +199/−170 (much of it code moved out of core), domain code +581/−78 (Refunds ≈ 222 server + 174 web lines; the rest is KYC schema/seed relocation and refactors onto shared helpers), tests +113/−3, docs/skill +149/−5. No generated files are committed. Refunds is a much smaller scope than KYC (one transition, no notes or validation), so these numbers do not show that an equivalent application would be proportionally cheaper.
 
 ## Prototype limitations
 
