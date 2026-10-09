@@ -46,18 +46,22 @@ export function changeFlag(
   if (typeof expected !== "string" || expected.length === 0) {
     throw validationError({ expectedUpdatedAt: "expectedUpdatedAt (the flag's updatedAt you loaded) is required" });
   }
+  if (Number.isNaN(Date.parse(expected))) {
+    throw validationError({ expectedUpdatedAt: "expectedUpdatedAt must be an ISO timestamp" });
+  }
   const { from, to } = TRANSITIONS[action];
   return guardedTransition(db, {
     update: (now) => {
-      // Keep updated_at strictly increasing so two changes in the same millisecond stay distinguishable.
-      const stamp = now > expected ? now : new Date(Date.parse(expected) + 1).toISOString();
+      // updated_at is the concurrency token: keep it strictly increasing even for two changes in one
+      // millisecond. last_changed_at stays the real change time, matching the audit event.
+      const version = now > expected ? now : new Date(Date.parse(expected) + 1).toISOString();
       return db
         .prepare(
           `UPDATE feature_flags
            SET status = ?, last_changed_by = ?, last_changed_at = ?, last_change_reason = ?, updated_at = ?
            WHERE id = ? AND status = ? AND updated_at = ?`,
         )
-        .run(to, actorId, stamp, changeReason, stamp, id, from, expected);
+        .run(to, actorId, now, changeReason, version, id, from, expected);
     },
     conflictMessage: () => {
       const current = loadOr404(db, id);

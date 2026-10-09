@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { auditCount, loginAs, setup } from "./helpers";
 import type { DB } from "../server/core/db";
 import { seedIfEmpty } from "../server/scripts/seedData";
@@ -108,6 +108,37 @@ describe("feature flags: workflow and audit", () => {
     expect(res.body.error.message).toMatch(/changed by someone else/);
     expect(flagRow(db, DISABLED)).toMatchObject({ status: "disabled", last_change_reason: "off" });
     expect(auditCount(db, DISABLED)).toBe(2);
+  });
+
+  it("rejects a malformed expectedUpdatedAt with 400, not 500", async () => {
+    const { app, db } = setup();
+    const admin = await loginAs(app, "u_admin");
+    const res = await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "ok", expectedUpdatedAt: "not-a-date" }).expect(400);
+    expect(res.body.error.details.expectedUpdatedAt).toMatch(/ISO timestamp/);
+    expect(auditCount(db, DISABLED)).toBe(0);
+  });
+
+  it("two changes in the same millisecond: version still advances, last change time matches the audit event", async () => {
+    const { app, db } = setup();
+    const admin = await loginAs(app, "u_admin");
+    const frozen = new Date(Math.floor(Date.now() / 1000) * 1000 + 1000);
+    vi.useFakeTimers({ toFake: ["Date"], now: frozen });
+    try {
+      const v0 = version(db, DISABLED);
+      await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "on", expectedUpdatedAt: v0 }).expect(200);
+      const v1 = version(db, DISABLED);
+      await admin.post(`${BASE}/${DISABLED}/disable`).send({ reason: "off", expectedUpdatedAt: v1 }).expect(200);
+      const v2 = version(db, DISABLED);
+      expect(v2 > v1 && v1 > v0).toBe(true);
+      await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "stale", expectedUpdatedAt: v1 }).expect(409);
+      const audit = db
+        .prepare("SELECT occurred_at FROM audit_events WHERE entity_id = ? AND action = 'flags.disabled'")
+        .get(DISABLED) as { occurred_at: string };
+      expect(flagRow(db, DISABLED).last_changed_at).toBe(audit.occurred_at);
+      expect(audit.occurred_at).toBe(frozen.toISOString());
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("requires expectedUpdatedAt (400, no change)", async () => {
