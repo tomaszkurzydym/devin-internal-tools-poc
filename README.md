@@ -1,4 +1,4 @@
-# Internal Tools POC — KYC Reviews and Refunds
+# Internal Tools POC — KYC Reviews, Refunds and Feature Flags
 
 Engineering-owned internal-tools prototype for a fintech. Two applications, **KYC Reviews** and a minimal **Refunds** review slice, are built on the same shared shell, session, permission policy, guarded-transition/audit infrastructure and UI components. New applications follow the repository skill [`add-internal-tool`](.agents/skills/add-internal-tool/SKILL.md); project rules for agents are in [`AGENTS.md`](AGENTS.md).
 
@@ -42,7 +42,7 @@ Environment: `PORT` (default `3000`), `DB_PATH` (default `data/app.db`), `SECURE
 7. **Switch user** → **Vera Viewer**. Everything can be read, but there are no action controls ("Read-only" notice) and **Admin** is not in the navigation. Visiting `/admin` directly shows a 403 from the server.
 8. **Switch user** → **Ada Admin** → **Admin** shows the seeded users and the permission matrix.
 9. As **Riley Reviewer**, open **Refunds**: search `Whitlock` or `RF-2001`, filter by Status, open a pending request and click **Mark reviewed**. The request's audit event (`refunds.marked_reviewed`) appears on the detail page and in the shared **Audit Log** (filter by `RF-2001` or the action). As **Vera Viewer** the Refunds pages are read-only.
-10. Feature Flags appears in the navigation as **Coming soon**.
+10. As **Ada Admin**, open **Feature Flags**: search `instant` or filter Team = *Cards*, open `FF-3001` (disabled), enter a change reason and click **Enable in production**. The `flags.enabled` event (with the reason) appears on the detail page and in the **Audit Log**. Submitting without a reason shows a validation error. As **Riley Reviewer** or **Vera Viewer** the flag pages are read-only, and a direct POST returns 403.
 
 ## Architecture
 
@@ -62,6 +62,7 @@ server/
     index.ts              # MODULES registry: the one place a new application is registered
     kyc/                  # KYC domain: types, schema, seed, repository, workflow, routes, index
     refunds/              # Refunds domain: same file layout, one transition
+    flags/                # Feature Flags domain: production enable/disable with a required reason
   database.ts             # opens the DB with all module schemas; reset helper
   scripts/                # demo users + seed/reset CLI (delegates domain data to modules)
   app.ts / index.ts       # composition root: mounts shared routers and every registered module
@@ -71,6 +72,7 @@ web/
                           # Loading/Empty/Error/Notice states, AuditEventsTable
   modules/kyc/            # queue + detail pages
   modules/refunds/        # queue + detail pages
+  modules/flags/          # list + detail pages
   pages/                  # Audit Log, Admin, Coming soon, demo sign-in
 tests/                    # vitest + supertest at the HTTP boundary
 .agents/skills/add-internal-tool/SKILL.md   # procedure for adding application #3+
@@ -87,12 +89,18 @@ tests/                    # vitest + supertest at the HTTP boundary
 | `kyc.read` (applications, notes) | ✔ | ✔ | ✔ |
 | `audit.read` | ✔ | ✔ | ✔ |
 | `refunds.read` | ✔ | ✔ | ✔ |
+| `flags.read` | ✔ | ✔ | ✔ |
 | `kyc.review` (start, note, approve, reject) | | ✔ | ✔ |
 | `refunds.review` (mark reviewed) | | ✔ | ✔ |
+| `flags.toggle` (enable/disable production flags) | | | ✔ |
 | `admin.access` | | | ✔ |
 
 - Every protected route declares `requirePermission(...)`. A missing or expired session gets **401**, and a missing permission gets **403**. The UI hides controls using `/api/session` permissions, but that is cosmetic only. `/admin` is routed for everyone on purpose, so the server makes the decision.
 - Mutations must be `application/json` (otherwise 415). Together with `SameSite=Strict` this blocks simple cross-site form posts.
+
+### Feature Flags workflow
+
+`disabled ⇄ enabled` via `POST /api/feature-flags/flags/:id/enable` and `/disable` (`flags.toggle`, **admin only**: a production change is treated as higher risk than a review action, so it gets its own permission rather than a role check in code). Every change requires a reason (trimmed, ≤ 500 chars, 400 otherwise). Neither state is final. Changes go through `guardedTransition`, so a stale or repeated change returns **409** with no audit event; success writes `flags.enabled` / `flags.disabled` (entity `feature_flag`, metadata `previousStatus`, `newStatus`, `reason`, `flagKey`, `environment`). 12 synthetic flags (`FF-3001`…`FF-3012`) are seeded. Only a production state is modelled: there is no flag service, SDK, evaluation, targeting, percentage rollout, other environments or approval step.
 
 ### Refunds workflow
 
@@ -117,7 +125,7 @@ pending ──start review──▶ in_review ──approve──▶ approved (f
 
 - `writeAuditEvent` runs inside the same transaction as the mutation, so the change and its audit event commit or roll back together (covered by a test that forces the audit insert to fail).
 - Fields: `id` (`evt_<uuid>`), `actor_id` (from the session), `action`, `entity_type`, `entity_id`, `occurred_at` (server UTC ISO-8601) and `metadata` JSON (`previousStatus`/`newStatus`, `noteId`, `reason`).
-- Actions: `kyc.review_started`, `kyc.note_added`, `kyc.approved`, `kyc.rejected`. Seeded history is marked `metadata.seeded = true`.
+- Actions: `kyc.review_started`, `kyc.note_added`, `kyc.approved`, `kyc.rejected`, `refunds.marked_reviewed`, `flags.enabled`, `flags.disabled`. Seeded history is marked `metadata.seeded = true`.
 - Append-only through the application: there are no write, edit or delete endpoints or UI, and SQLite triggers abort `UPDATE`/`DELETE` on `audit_events`. This is **not** tamper-proof storage: anyone with file access to the DB can change it.
 - `GET /api/audit-events?entityId=&action=&entityType=` returns events newest first (`audit.read`).
 
@@ -149,6 +157,7 @@ pending ──start review──▶ in_review ──approve──▶ approved (f
 - Audit storage is append-only only at the application and trigger level. It is not WORM or tamper-evident.
 - No rate limiting, no CSRF token (relies on SameSite=Strict plus JSON-only), no HTTPS (set `SECURE_COOKIES=true` behind TLS), and no security headers or CSP.
 - Admin is read-only, and there is no user or role management.
+- Feature flags are records only: no SDK or runtime evaluation, a single production state per flag, and no four-eyes approval for production changes.
 - No pagination (audit queries default to 200 rows, max 500), and search is a simple `LIKE`.
 - No reopen or override flows, no assignment or claiming of reviews, and no SLA timers.
 - The UI is functional, not polished. There are no frontend unit tests, only server-boundary tests and manual browser verification.

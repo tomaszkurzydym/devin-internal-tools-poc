@@ -46,3 +46,13 @@ export function oneOf<T extends string>(values: readonly T[], v: unknown): T | u
 export function queryString(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
+
+/** Required, trimmed, length-limited text field; 400 with field details otherwise. */
+export function requiredText(field: string, value: unknown, label: string, max = 2000): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw validationError({ [field]: `${label} is required` });
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > max) throw validationError({ [field]: `${label} must be at most ${max} characters` });
+  return trimmed;
+}

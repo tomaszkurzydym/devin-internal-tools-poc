@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { DB } from "../../core/db.js";
 import { nowUtc } from "../../core/db.js";
-import { conflict, notFound, validationError } from "../../core/http.js";
+import { conflict, notFound, requiredText } from "../../core/http.js";
 import { writeAuditEvent } from "../../core/audit.js";
 import { guardedTransition } from "../../core/transition.js";
 import { getApplication } from "./repository.js";
@@ -37,16 +37,8 @@ export function availableActions(status: KycStatus): WorkflowAction[] {
   return actions;
 }
 
-export function validateText(field: string, value: unknown, label: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw validationError({ [field]: `${label} is required` });
-  }
-  const trimmed = value.trim();
-  if (trimmed.length > MAX_TEXT_LENGTH) {
-    throw validationError({ [field]: `${label} must be at most ${MAX_TEXT_LENGTH} characters` });
-  }
-  return trimmed;
-}
+export const validateText = (field: string, value: unknown, label: string): string =>
+  requiredText(field, value, label, MAX_TEXT_LENGTH);
 
 function loadOr404(db: DB, id: string): KycApplication {
   const app = getApplication(db, id);

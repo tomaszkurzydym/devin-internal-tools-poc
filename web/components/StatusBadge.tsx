@@ -6,6 +6,8 @@ const TONES: Record<string, Tone> = {
   approved: "success",
   rejected: "danger",
   reviewed: "success",
+  enabled: "success",
+  disabled: "neutral",
   low: "success",
   medium: "warning",
   high: "danger",
