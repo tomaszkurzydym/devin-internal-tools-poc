@@ -1,6 +1,6 @@
-# Internal Tools POC — KYC Reviews, Refunds and Feature Flags
+# Internal Tools POC
 
-Engineering-owned internal-tools prototype for a fintech. Two applications, **KYC Reviews** and a minimal **Refunds** review slice, are built on the same shared shell, session, permission policy, guarded-transition/audit infrastructure and UI components. New applications follow the repository skill [`add-internal-tool`](.agents/skills/add-internal-tool/SKILL.md); project rules for agents are in [`AGENTS.md`](AGENTS.md).
+Engineering-owned internal-tools prototype for a fintech. Three applications, **KYC Reviews**, a minimal **Refunds** review slice and production **Feature Flags**, are built on the same shared shell, session, permission policy, guarded-transition/audit infrastructure and UI components. New applications follow the repository skill [`add-internal-tool`](.agents/skills/add-internal-tool/SKILL.md); project rules for agents are in [`AGENTS.md`](AGENTS.md).
 
 > **Synthetic data only.** Every applicant, ID and check result is fictional. No real customer systems are contacted.
 >

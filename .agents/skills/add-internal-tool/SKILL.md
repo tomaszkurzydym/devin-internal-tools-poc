@@ -102,7 +102,7 @@ Browser check (`npm run build && PORT=3000 npm start`, demo users on the sign-in
 
 ## 6. Documentation to update
 
-- `README.md`: title, demo walkthrough step, architecture tree, permission table, a `### <Name> workflow` section, the audit action list, and limitations.
+- `README.md`: intro paragraph, demo walkthrough step, architecture tree, permission table, a `### <Name> workflow` section, the audit action list, and limitations.
 - `VERIFICATION.md`: a new top section with commands run, browser checks and what was not verified.
 - This skill: fix anything that was missing or wrong while you followed it.
 
