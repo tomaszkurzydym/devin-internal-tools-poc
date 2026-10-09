@@ -10,14 +10,16 @@ export const PERMISSIONS = {
   "kyc.review": "Start reviews, add notes, approve and reject KYC applications",
   "refunds.read": "View refund requests",
   "refunds.review": "Mark refund requests as reviewed",
+  "flags.read": "View production feature flags",
+  "flags.toggle": "Enable or disable production feature flags (reason required)",
   "audit.read": "View the audit log",
   "admin.access": "Access the Admin area",
 } as const;
 export type Permission = keyof typeof PERMISSIONS;
 
-const viewer: Permission[] = ["kyc.read", "refunds.read", "audit.read"];
+const viewer: Permission[] = ["kyc.read", "refunds.read", "flags.read", "audit.read"];
 const reviewer: Permission[] = [...viewer, "kyc.review", "refunds.review"];
-const admin: Permission[] = [...reviewer, "admin.access"];
+const admin: Permission[] = [...reviewer, "flags.toggle", "admin.access"];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = { viewer, reviewer, admin };
 

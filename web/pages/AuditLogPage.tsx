@@ -25,7 +25,7 @@ export function AuditLogPage() {
         onChange={set}
         onClear={clear}
         searchName="entityId"
-        searchPlaceholder="Filter by record ID (e.g. KYC-1001, RF-2001)"
+        searchPlaceholder="Filter by record ID (e.g. KYC-1001, RF-2001, FF-3001)"
         selects={[{ name: "action", label: "Action", options: actions }]}
       />
       {error ? <ErrorState error={error} onRetry={reload} /> : !data && loading ? <Loading /> : <AuditEventsTable events={data?.events ?? []} />}

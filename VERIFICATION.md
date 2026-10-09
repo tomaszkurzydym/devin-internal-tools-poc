@@ -1,5 +1,20 @@
 # Verification report
 
+## Feature Flags (branch `devin/1791555249-feature-flags`, commit `5f4b9e7`)
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 73 tests pass (15 new in `tests/feature-flags.test.ts`) |
+| `npm run lint` / `npm run typecheck` / `npm run build` | pass |
+| Upgrade path | `npm start` on the existing `data/app.db` added FF-3001…FF-3012; KYC (26) and Refunds (18) rows kept |
+| Devin Review | 1 bug: a stale change succeeded after someone else toggled the flag away and back (A→B→A). Fixed by requiring `expectedUpdatedAt`; unit test plus browser re-check |
+| Browser: admin | search (`instant`, key, ID), status+team filters kept in URL, Clear; enable and disable with reason; blank reason blocked; 501-char reason → 400; detail and shared Audit Log show `flags.enabled` / `flags.disabled` |
+| Browser: stale tabs | repeated enable → 409; round trip in another tab → 409 "changed by someone else"; detail and audit panel both refresh; no extra event |
+| Browser: viewer / reviewer | read-only list and detail with notice, no controls; direct POST → 403 `Missing permission: flags.toggle`, audit unchanged |
+| Browser: regression | reviewer KYC start+approve, Refund mark reviewed, Audit Log filters; Admin matrix shows `flags.read` (all) and `flags.toggle` (admin only) |
+| Restart | server stop/start without reset: flag states, last-change data and event IDs persisted |
+| Not verified | preview-host (only localhost tested); one early search entry showed `F-3001` once and did not reproduce in 11 fast-typing retries, cause unknown; no frontend unit tests |
+
 ## Refunds slice + shared foundations (branch `devin/1791484239-refunds-shared-foundations`)
 
 | Check | Result |

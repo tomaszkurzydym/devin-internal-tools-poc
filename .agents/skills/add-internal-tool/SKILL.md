@@ -12,6 +12,7 @@ Do not use it for changes to the shared core alone, or for a non-internal-tools 
 Reference implementations to read before writing code:
 - **Refunds** (`server/modules/refunds/`, `web/modules/refunds/`): the smallest complete example (list, filter, detail, one transition).
 - **KYC** (`server/modules/kyc/`, `web/modules/kyc/`): multiple transitions, required-text validation, notes (non-status mutation).
+- **Feature Flags** (`server/modules/flags/`, `web/modules/flags/`): two reversible transitions (no final state), a required reason on every change, an admin-only mutation permission (`flags.toggle`), and an optimistic `expectedUpdatedAt` check. If any state can be re-entered (A → B → A), a `WHERE status = ?` guard alone lets stale requests through; also guard on the `updated_at` the client loaded, as `changeFlag` does.
 
 Request: $ARGUMENTS
 
@@ -46,7 +47,7 @@ State your assumptions in the PR if the user does not specify something.
 | `schema.ts` | idempotent `CREATE TABLE IF NOT EXISTS` DDL + tables in drop order | `server/modules/refunds/schema.ts` |
 | `seed.ts` | synthetic rows, plus `writeAuditEvent` for seeded history so audit matches state; runs inside the caller's transaction | `server/modules/refunds/seed.ts` |
 | `repository.ts` | row → object mapping, list with filters, get by id | `server/modules/refunds/repository.ts` |
-| `workflow.ts` | `TRANSITIONS`, `availableActions`, validation, mutations via `guardedTransition` | `server/modules/refunds/workflow.ts`, `server/modules/kyc/workflow.ts` (`validateText`) |
+| `workflow.ts` | `TRANSITIONS`, `availableActions`, validation, mutations via `guardedTransition` | `server/modules/refunds/workflow.ts`, `server/modules/flags/workflow.ts` (reason via `requiredText`) |
 | `routes.ts` | Express router; `read`/`review` permission middleware; detail response includes `availableActions` | `server/modules/refunds/routes.ts` |
 | `index.ts` | exports a `ServerModule` (`server/core/module.ts`) | `server/modules/refunds/index.ts` |
 
@@ -54,7 +55,7 @@ Then register it: add the module to `MODULES` in `server/modules/index.ts`. That
 
 Add permissions in `shared/permissions.ts`; the Admin page matrix picks them up automatically.
 
-Error helpers: `notFound`, `conflict`, `validationError` from `server/core/http.ts` (404 / 409 / 400 with field details).
+Error helpers: `notFound`, `conflict`, `validationError` from `server/core/http.ts` (404 / 409 / 400 with field details). Required, trimmed, length-limited text (reasons, notes): `requiredText(field, value, label, max)` from the same file.
 
 ## 3. Web: files to create
 
@@ -64,14 +65,14 @@ Error helpers: `notFound`, `conflict`, `validationError` from `server/core/http.
 | `<Name>QueuePage.tsx` | `PageHeader`, `FilterBar`, `DataTable`, `StatusBadge`, `useUrlFilters`, `useApi`, `qs`, `Loading`/`ErrorState` | `web/modules/refunds/RefundsQueuePage.tsx` |
 | `<Name>DetailPage.tsx` | `useAction` (busy/feedback/409 reload), `Notice`, `Button`/`Form`/`TextAreaField`, `AuditEventsTable` filtered by `entityType`+`entityId` | `web/modules/refunds/RefundDetailPage.tsx`, `web/modules/kyc/KycDetailPage.tsx` (form + validation) |
 
-Register navigation in `web/core/nav.ts` (`permission: "<resource>.read"`) and routes in `web/App.tsx`. Add new status colours to `TONES` in `web/components/StatusBadge.tsx` if needed. Show a read-only notice when `!can("<resource>.<action>")` (`const { can } = useSession()`).
+Register navigation in `web/core/nav.ts` (`permission: "<resource>.read"`) and routes in `web/App.tsx`. If the app replaces a "Coming soon" nav entry, drop `comingSoon: true` and its `ComingSoonPage` route. Add new status colours to `TONES` in `web/components/StatusBadge.tsx` if needed. Show a read-only notice when `!can("<resource>.<action>")` (`const { can } = useSession()`).
 
 ## 4. Choices that depend on the application
 
 - Number of statuses and which are final; whether there are non-status mutations (notes, comments).
-- Required inputs per action (reuse `validateText` pattern for required, length-limited text).
+- Required inputs per action (use `requiredText` from `server/core/http.ts`; send them as JSON body fields and mirror the limit in `TextAreaField maxLength`).
 - Which fields are searchable vs. select filters.
-- Whether reviewer and admin share a permission (current default) or admin-only actions exist (add a separate permission, e.g. `<resource>.admin`; do not branch on role names in code).
+- Whether reviewer and admin share a permission (current default) or admin-only actions exist (add a separate permission and grant it only in the `admin` array, as `flags.toggle` does; do not branch on role names in code). The Admin matrix is served by `GET /api/admin/overview` (assert it in tests).
 - Whether to add an admin-only page. Admin is read-only today.
 
 ## 5. Required verification (all must actually be run; report anything not run)
@@ -99,7 +100,13 @@ Browser check (`npm run build && PORT=3000 npm start`, demo users on the sign-in
 - Restart the server and confirm persistence. Do not run `npm run db:reset` during persistence checks (it wipes `data/app.db`); `npm start` seeds missing module data automatically.
 - Existing modules (KYC Reviews, Audit Log, Admin) still work.
 
-## 6. Final handover
+## 6. Documentation to update
+
+- `README.md`: intro paragraph, demo walkthrough step, architecture tree, permission table, a `### <Name> workflow` section, the audit action list, and limitations.
+- `VERIFICATION.md`: a new top section with commands run, browser checks and what was not verified.
+- This skill: fix anything that was missing or wrong while you followed it.
+
+## 7. Final handover
 
 Include in the PR description:
 - What the new module does and explicitly does not do.
