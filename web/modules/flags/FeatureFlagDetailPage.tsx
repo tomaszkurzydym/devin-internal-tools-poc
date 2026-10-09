@@ -79,7 +79,7 @@ export function FeatureFlagDetailPage() {
               setReasonError(undefined);
               void run(
                 action,
-                () => api.post<FlagDetail>(`/api/feature-flags/flags/${f.id}/${action}`, { reason }),
+                () => api.post<FlagDetail>(`/api/feature-flags/flags/${f.id}/${action}`, { reason, expectedUpdatedAt: f.updatedAt }),
                 enabling ? "Flag enabled in production." : "Flag disabled in production.",
                 setReasonError,
               ).then((ok) => ok && setReason(""));

@@ -12,7 +12,7 @@ Do not use it for changes to the shared core alone, or for a non-internal-tools 
 Reference implementations to read before writing code:
 - **Refunds** (`server/modules/refunds/`, `web/modules/refunds/`): the smallest complete example (list, filter, detail, one transition).
 - **KYC** (`server/modules/kyc/`, `web/modules/kyc/`): multiple transitions, required-text validation, notes (non-status mutation).
-- **Feature Flags** (`server/modules/flags/`, `web/modules/flags/`): two reversible transitions (no final state), a required reason on every change, and an admin-only mutation permission (`flags.toggle`).
+- **Feature Flags** (`server/modules/flags/`, `web/modules/flags/`): two reversible transitions (no final state), a required reason on every change, an admin-only mutation permission (`flags.toggle`), and an optimistic `expectedUpdatedAt` check. If any state can be re-entered (A → B → A), a `WHERE status = ?` guard alone lets stale requests through; also guard on the `updated_at` the client loaded, as `changeFlag` does.
 
 Request: $ARGUMENTS
 

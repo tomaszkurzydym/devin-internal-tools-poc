@@ -6,6 +6,8 @@ import { seedIfEmpty } from "../server/scripts/seedData";
 const DISABLED = "FF-3001"; // payments.instant_payouts, never changed
 const ENABLED_WITH_HISTORY = "FF-3002"; // payments.fx_quotes_v2, one seeded flags.enabled event
 const BASE = "/api/feature-flags/flags";
+const version = (db: DB, id: string) =>
+  (db.prepare("SELECT updated_at FROM feature_flags WHERE id = ?").get(id) as { updated_at: string }).updated_at;
 const flagRow = (db: DB, id: string) =>
   db.prepare("SELECT status, last_changed_by, last_change_reason, last_changed_at FROM feature_flags WHERE id = ?").get(id) as {
     status: string; last_changed_by: string | null; last_change_reason: string | null; last_changed_at: string | null;
@@ -46,7 +48,7 @@ describe("feature flags: workflow and audit", () => {
     const admin = await loginAs(app, "u_admin");
     const res = await admin
       .post(`${BASE}/${DISABLED}/enable`)
-      .send({ reason: "  Launch approved in release review  ", actorId: "u_viewer", role: "viewer" })
+      .send({ reason: "  Launch approved in release review  ", expectedUpdatedAt: version(db, DISABLED), actorId: "u_viewer", role: "viewer" })
       .expect(200);
     expect(res.body.flag).toMatchObject({ status: "enabled", lastChangedBy: "u_admin", lastChangeReason: "Launch approved in release review" });
     expect(res.body.availableActions).toEqual(["disable"]);
@@ -73,8 +75,9 @@ describe("feature flags: workflow and audit", () => {
   it("rejects a repeated or stale change with 409 and no duplicate audit event", async () => {
     const { app, db } = setup();
     const admin = await loginAs(app, "u_admin");
-    await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "go" }).expect(200);
-    const again = await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "go again" }).expect(409);
+    const loaded = version(db, DISABLED);
+    await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "go", expectedUpdatedAt: loaded }).expect(200);
+    const again = await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "go again", expectedUpdatedAt: loaded }).expect(409);
     expect(again.body.error.message).toMatch(/requires "disabled"/);
     expect(auditCount(db, DISABLED)).toBe(1);
     expect(flagRow(db, DISABLED).last_change_reason).toBe("go");
@@ -84,11 +87,36 @@ describe("feature flags: workflow and audit", () => {
     const { app, db } = setup();
     const admin = await loginAs(app, "u_admin");
     const before = auditCount(db, ENABLED_WITH_HISTORY);
-    await admin.post(`${BASE}/${ENABLED_WITH_HISTORY}/disable`).send({ reason: "Incident INC-1 mitigation" }).expect(200);
-    await admin.post(`${BASE}/${ENABLED_WITH_HISTORY}/enable`).send({ reason: "Incident resolved" }).expect(200);
+    await admin.post(`${BASE}/${ENABLED_WITH_HISTORY}/disable`).send({ reason: "Incident INC-1 mitigation", expectedUpdatedAt: version(db, ENABLED_WITH_HISTORY) }).expect(200);
+    await admin
+      .post(`${BASE}/${ENABLED_WITH_HISTORY}/enable`)
+      .send({ reason: "Incident resolved", expectedUpdatedAt: version(db, ENABLED_WITH_HISTORY) })
+      .expect(200);
     expect(auditCount(db, ENABLED_WITH_HISTORY, "flags.disabled")).toBe(1);
     expect(auditCount(db, ENABLED_WITH_HISTORY)).toBe(before + 2);
     expect(flagRow(db, ENABLED_WITH_HISTORY).status).toBe("enabled");
+  });
+
+  it("rejects a stale change after someone else toggled the flag away and back (409, no event)", async () => {
+    const { app, db } = setup();
+    const admin = await loginAs(app, "u_admin");
+    const staleTab = version(db, DISABLED);
+    await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "on", expectedUpdatedAt: staleTab }).expect(200);
+    await admin.post(`${BASE}/${DISABLED}/disable`).send({ reason: "off", expectedUpdatedAt: version(db, DISABLED) }).expect(200);
+    expect(flagRow(db, DISABLED).status).toBe("disabled");
+    const res = await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "stale", expectedUpdatedAt: staleTab }).expect(409);
+    expect(res.body.error.message).toMatch(/changed by someone else/);
+    expect(flagRow(db, DISABLED)).toMatchObject({ status: "disabled", last_change_reason: "off" });
+    expect(auditCount(db, DISABLED)).toBe(2);
+  });
+
+  it("requires expectedUpdatedAt (400, no change)", async () => {
+    const { app, db } = setup();
+    const admin = await loginAs(app, "u_admin");
+    const res = await admin.post(`${BASE}/${DISABLED}/enable`).send({ reason: "ok" }).expect(400);
+    expect(res.body.error.details.expectedUpdatedAt).toMatch(/required/);
+    expect(flagRow(db, DISABLED).status).toBe("disabled");
+    expect(auditCount(db, DISABLED)).toBe(0);
   });
 
   it.each([

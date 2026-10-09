@@ -1,5 +1,5 @@
 import type { DB } from "../../core/db.js";
-import { notFound, requiredText } from "../../core/http.js";
+import { notFound, requiredText, validationError } from "../../core/http.js";
 import { guardedTransition } from "../../core/transition.js";
 import { getFlag } from "./repository.js";
 import { FLAG_AUDIT_ACTIONS, FLAG_ENTITY, type FeatureFlag, type FlagStatus } from "./types.js";
@@ -29,21 +29,42 @@ function loadOr404(db: DB, id: string): FeatureFlag {
   return f;
 }
 
-export function changeFlag(db: DB, actorId: string, id: string, action: FlagAction, reason: unknown): FeatureFlag {
+/**
+ * Both states are reversible, so a status guard alone would let a stale request through after
+ * someone else toggles the flag away and back. The caller must also send the `updatedAt` it saw.
+ */
+export function changeFlag(
+  db: DB,
+  actorId: string,
+  id: string,
+  action: FlagAction,
+  input: { reason: unknown; expectedUpdatedAt: unknown },
+): FeatureFlag {
   const flag = loadOr404(db, id);
-  const changeReason = requiredText("reason", reason, "Change reason", MAX_REASON_LENGTH);
+  const changeReason = requiredText("reason", input.reason, "Change reason", MAX_REASON_LENGTH);
+  const expected = input.expectedUpdatedAt;
+  if (typeof expected !== "string" || expected.length === 0) {
+    throw validationError({ expectedUpdatedAt: "expectedUpdatedAt (the flag's updatedAt you loaded) is required" });
+  }
   const { from, to } = TRANSITIONS[action];
   return guardedTransition(db, {
-    update: (now) =>
-      db
+    update: (now) => {
+      // Keep updated_at strictly increasing so two changes in the same millisecond stay distinguishable.
+      const stamp = now > expected ? now : new Date(Date.parse(expected) + 1).toISOString();
+      return db
         .prepare(
           `UPDATE feature_flags
            SET status = ?, last_changed_by = ?, last_changed_at = ?, last_change_reason = ?, updated_at = ?
-           WHERE id = ? AND status = ?`,
+           WHERE id = ? AND status = ? AND updated_at = ?`,
         )
-        .run(to, actorId, now, changeReason, now, id, from),
-    conflictMessage: () =>
-      `Cannot ${action} flag ${flag.key} with status "${loadOr404(db, id).status}" (requires "${from}")`,
+        .run(to, actorId, stamp, changeReason, stamp, id, from, expected);
+    },
+    conflictMessage: () => {
+      const current = loadOr404(db, id);
+      return current.status !== from
+        ? `Cannot ${action} flag ${flag.key} with status "${current.status}" (requires "${from}")`
+        : `Flag ${flag.key} was changed by someone else since you loaded it; review the latest state and try again`;
+    },
     audit: {
       actorId,
       action: AUDIT_ACTION[action],

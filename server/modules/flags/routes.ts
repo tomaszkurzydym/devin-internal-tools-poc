@@ -33,7 +33,10 @@ export function flagsRouter(db: DB): Router {
 
   for (const action of ["enable", "disable"] as const satisfies readonly FlagAction[]) {
     router.post(`/flags/:id/${action}`, toggle, (req, res) => {
-      changeFlag(db, actor(req).id, req.params.id as string, action, req.body?.reason);
+      changeFlag(db, actor(req).id, req.params.id as string, action, {
+        reason: req.body?.reason,
+        expectedUpdatedAt: req.body?.expectedUpdatedAt,
+      });
       res.json(detail(req.params.id as string));
     });
   }
